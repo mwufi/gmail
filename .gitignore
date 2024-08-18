@@ -12,3 +12,6 @@ wheels/
 # credentials
 credentials.json
 token.json
+
+# data
+msg_*.txt
