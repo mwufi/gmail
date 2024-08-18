@@ -1,6 +1,8 @@
 import base64
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from cleaner import clean_html
+from convert_to_markdown import to_markdown_file
 
 from creds import get_local_credentials
 import datetime
@@ -92,45 +94,56 @@ def process_message(request_id, response, exception):
     print("Message parts:")
     for part in payload.get("parts", []):
         print(f"- {part['mimeType']}")
-    # Get the message body
-    plain_content = ""
-    html_content = ""
+
+    def decode_content(data):
+        return base64.urlsafe_b64decode(data).decode("utf-8")
+
+    def process_part(part):
+        if part["mimeType"] == "text/plain":
+            return decode_content(part["body"]["data"]), None
+        elif part["mimeType"] == "text/html":
+            return None, decode_content(part["body"]["data"])
+        return None, None
+
+    def save_content(content, content_type, request_id):
+        if content:
+            filename = f"msg_{request_id}_{content_type}.txt"
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(content)
+            filesize = len(content) // 6
+            print(
+                f"{content_type.capitalize()} content saved to {filename} ({filesize} length)"
+            )
+
+    plain_content, html_content = None, None
+
     for part in payload.get("parts", []):
         if part["mimeType"] == "multipart/alternative":
             for subpart in part.get("parts", []):
-                if subpart["mimeType"] == "text/plain":
-                    plain_content += base64.urlsafe_b64decode(subpart["body"]["data"]).decode("utf-8")
-                elif subpart["mimeType"] == "text/html":
-                    html_content += base64.urlsafe_b64decode(subpart["body"]["data"]).decode("utf-8")
-        elif part["mimeType"] == "text/plain":
-            plain_content += base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-        elif part["mimeType"] == "text/html":
-            html_content += base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                plain, html = process_part(subpart)
+                plain_content = plain_content or plain
+                html_content = html_content or html
+        else:
+            plain, html = process_part(part)
+            plain_content = plain_content or plain
+            html_content = html_content or html
 
-    # If there are no parts, try to get the body from the payload directly
     if not plain_content and not html_content:
         body_data = payload.get("body", {}).get("data", "")
         if body_data:
-            decoded_content = base64.urlsafe_b64decode(body_data).decode("utf-8")
+            content = decode_content(body_data)
             if payload.get("mimeType") == "text/plain":
-                plain_content = decoded_content
+                plain_content = content
             elif payload.get("mimeType") == "text/html":
-                html_content = decoded_content
+                html_content = content
 
-    # Save the content to files
-    if plain_content:
-        filename = f"msg_{request_id}_plain.txt"
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(plain_content)
-        print(f"Plain text content saved to {filename}")
-    
     if html_content:
-        filename = f"msg_{request_id}_html.txt"
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(html_content)
-        print(f"HTML content saved to {filename}")
-    
-    if not plain_content and not html_content:
+        cleaned_html = clean_html(html_content)
+        to_markdown_file(cleaned_html, f"msg_{request_id}_html.md", with_images=False)
+        # save_content(cleaned_html, "html", request_id)
+    elif plain_content:
+        save_content(plain_content, "plain", request_id)
+    else:
         print("No message body found")
 
     print(f"Subject: {subject}")
