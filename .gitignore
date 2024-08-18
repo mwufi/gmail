@@ -9,4 +9,6 @@ wheels/
 # venv
 .venv
 
+# credentials
 credentials.json
+token.json
