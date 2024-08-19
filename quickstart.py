@@ -43,26 +43,58 @@ def get_labels(service):
         print(f"{i}: {t}")
 
 
+def log(key, value, label=""):
+    print(f"{label} | {key}: {value}")
+
+
+@sleep_and_retry
+@limits(calls=2, period=1)  # per 2 seconds
+def api_list_messages(query, service, page_token=None):
+    results = (
+        service.users()
+        .messages()
+        .list(userId="me", q=query, pageToken=page_token)
+        .execute()
+    )
+    return results
+
+
+def list_messages(query, service):
+    results = api_list_messages(query, service)
+    messages = results.get("messages", [])
+
+    next_page_token = results.get("nextPageToken")
+    while next_page_token:
+        results = api_list_messages(query, service, next_page_token)
+        messages.extend(results.get("messages", []))
+        next_page_token = results.get("nextPageToken")
+
+    log("messages", len(messages))
+    if not messages:
+        print("No messages found.")
+        return []
+
+    return messages
+
+
+QUOTA_LIMIT = 250
+BATCH_SIZE = 50
+COST_PER_BATCH = 5 * BATCH_SIZE
+
+
+@sleep_and_retry
+@limits(calls=QUOTA_LIMIT / COST_PER_BATCH, period=2)  # per 2 seconds
+def rate_limited_batch_execute(batch):
+    batch.execute()
+
+
 def get_messages_this_week(service):
     start_of_week = (
         datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday())
     ).strftime("%Y/%m/%d")
     query = f"after:{start_of_week}"
-    results = service.users().messages().list(userId="me", q=query).execute()
-    messages = results.get("messages", [])
 
-    if not messages:
-        print("No messages found.")
-        return
-
-    QUOTA_LIMIT = 250
-    BATCH_SIZE = 50
-    COST_PER_BATCH = 5 * BATCH_SIZE
-
-    @sleep_and_retry
-    @limits(calls=QUOTA_LIMIT / COST_PER_BATCH, period=2)  # per 2 seconds
-    def rate_limited_batch_execute(batch):
-        batch.execute()
+    messages = list_messages(query, service)
 
     processed_messages = 0
     for i in range(0, len(messages), BATCH_SIZE):
@@ -73,7 +105,7 @@ def get_messages_this_week(service):
         rate_limited_batch_execute(batch)
         time.sleep(1)  # Add a small delay between batches
 
-    print(f"Done. We processed {len(messages)} messages.")
+    print(f"Done. We processed {processed_messages} messages.")
 
 
 def main():
