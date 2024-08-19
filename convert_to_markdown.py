@@ -2,6 +2,8 @@ import html2text
 import requests
 from bs4 import BeautifulSoup
 
+from format_markdown import format_markdown
+
 
 def html_to_markdown(html_content, base_url=None, with_images=False):
     # Create an instance of HTML2Text
@@ -28,10 +30,12 @@ def html_to_markdown(html_content, base_url=None, with_images=False):
     # Remove too many spaces
     markdown = markdown.replace("   ", "")
 
+    markdown = format_markdown(markdown)
+
     return markdown
 
 
-def clean_html(html_content):
+def _clean_html(html_content):
     # Parse the HTML with BeautifulSoup
     soup = BeautifulSoup(html_content, "html.parser")
 
@@ -64,8 +68,8 @@ def convert_html_file_to_markdown(file_path, output_path):
         file.write(markdown)
 
 
-def to_markdown_file(html_string, output_path):
-    markdown = html_to_markdown(html_string)
+def to_markdown_file(html_string, output_path, with_images=False):
+    markdown = html_to_markdown(html_string, with_images=with_images)
     with open(output_path, "w", encoding="utf-8") as file:
         file.write(markdown)
     print(f"Markdown file created at {output_path}")
@@ -95,5 +99,5 @@ if __name__ == "__main__":
     print(markdown_string)
 
     # Clean HTML and convert to plain text
-    cleaned_text = clean_html(html_string)
+    cleaned_text = _clean_html(html_string)
     print(cleaned_text)
