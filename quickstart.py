@@ -72,13 +72,13 @@ def list_messages(query, service):
     return messages
 
 
-QUOTA_LIMIT = 250
-BATCH_SIZE = 50
-COST_PER_BATCH = 5 * BATCH_SIZE
+QUOTA_LIMIT = 210
+BATCH_SIZE = 30
+QUOTA_PER_BATCH = 6 * BATCH_SIZE
 
 
 @sleep_and_retry
-@limits(calls=QUOTA_LIMIT / COST_PER_BATCH, period=2)  # per 2 seconds
+@limits(calls=QUOTA_LIMIT / QUOTA_PER_BATCH, period=1.5)  # per 2 seconds
 def rate_limited_batch_execute(batch):
     batch.execute()
 

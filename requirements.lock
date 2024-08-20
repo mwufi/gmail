@@ -63,15 +63,20 @@ pyparsing==3.1.2
     # via httplib2
 ratelimit==2.2.1
     # via gmail-integration
+regex==2024.7.24
+    # via tiktoken
 requests==2.32.3
     # via google-api-core
     # via requests-oauthlib
+    # via tiktoken
 requests-oauthlib==2.0.0
     # via google-auth-oauthlib
 rsa==4.9
     # via google-auth
 soupsieve==2.6
     # via beautifulsoup4
+tiktoken==0.7.0
+    # via gmail-integration
 uritemplate==4.1.1
     # via google-api-python-client
 urllib3==2.2.2

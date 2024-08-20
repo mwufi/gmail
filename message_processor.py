@@ -2,6 +2,7 @@ import base64
 import re
 from cleaner import clean_html
 from convert_to_markdown import html_to_markdown
+import tiktoken
 
 
 def decode_content(data):
@@ -18,6 +19,10 @@ def process_part(part):
 
 def sanitize_filename(filename):
     return re.sub(r"[^\w\-_\. ]", "_", filename)
+
+
+def count_tokens(text: str):
+    return len(tiktoken.encoding_for_model("gpt-4o").encode(text))
 
 
 def extract_email_metadata(response):
@@ -115,6 +120,7 @@ def print_side_by_side(*items):
         else:
             key = item
             value = ""
+        value = str(value)
         truncated_value = f"{value[:30]}..." if len(value) > 30 else value
         formatted_items.append(f"{key}: {truncated_value}")
     print(" | ".join(formatted_items))
@@ -134,12 +140,13 @@ def process_message(request_id, response, exception):
         sanitized_subject = sanitize_filename(metadata["subject"])[:50]
         sender_email = sanitize_filename(metadata["sender_email"])[:50]
         filename = f"email{request_id}_{sender_email}_{sanitized_subject}.md"
+        metadata["num_tokens"] = count_tokens(metadata["clean_markdown"])
         save_to_file(metadata["clean_markdown"], filename)
     else:
         print("No message body found")
 
     print_side_by_side(
-        ("Email", request_id),
+        ("Tokens", metadata.get("num_tokens")),
         ("Date", metadata["time_received"][:22]),
         ("Subject", metadata["subject"]),
         ("Addr", metadata["sender_email"]),
