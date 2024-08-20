@@ -11,8 +11,9 @@ def clean_html(html):
         cleaner.style = True  # This is True because we want to activate the styles & stylesheet filter
         before = html
         after = cleaner.clean_html(html)
-        print(f"BEFORE: {len(before)}")
-        print(f"AFTER: {len(after)}")
+        # TODO: log this!!
+        # print(f"BEFORE: {len(before)}")
+        # print(f"AFTER: {len(after)}")
         return after
     except Exception as e:
         print(f"Error cleaning HTML: ------------------------------ {e}", html)

@@ -43,10 +43,6 @@ def get_labels(service):
         print(f"{i}: {t}")
 
 
-def log(key, value, label=""):
-    print(f"{label} | {key}: {value}")
-
-
 @sleep_and_retry
 @limits(calls=2, period=1)  # per 2 seconds
 def api_list_messages(query, service, page_token=None):
@@ -69,7 +65,6 @@ def list_messages(query, service):
         messages.extend(results.get("messages", []))
         next_page_token = results.get("nextPageToken")
 
-    log("messages", len(messages))
     if not messages:
         print("No messages found.")
         return []

@@ -1,6 +1,7 @@
 import base64
+import re
 from cleaner import clean_html
-from convert_to_markdown import to_markdown_file
+from convert_to_markdown import html_to_markdown
 
 
 def decode_content(data):
@@ -15,46 +16,47 @@ def process_part(part):
     return None, None
 
 
-def save_content(content, content_type, request_id):
-    if content:
-        filename = f"msg_{request_id}_{id}_{content_type}.txt"
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(content)
-        filesize = len(content) // 6
-        print(
-            f"{content_type.capitalize()} content saved to {filename} ({filesize} length)"
-        )
+def sanitize_filename(filename):
+    return re.sub(r"[^\w\-_\. ]", "_", filename)
 
 
-def process_message(request_id, response, exception):
-    if exception is not None:
-        print(f"An error occurred: {exception}")
-        return
-
-    id = response["id"]
-
-    # Check if the message is a draft
-    if "DRAFT" in response.get("labelIds", []):
-        return
-
-    # Extract relevant information from the message
+def extract_email_metadata(response):
     payload = response["payload"]
     headers = payload["headers"]
-
-    # Get the subject and sender
-    subject = next(
-        (header["value"] for header in headers if header["name"].lower() == "subject"),
-        "No Subject",
-    )
-    sender = next(
+    sender_header = next(
         (header["value"] for header in headers if header["name"].lower() == "from"),
-        "Unknown Sender",
+        "Unknown Sender <unknown@example.com>",
+    )
+    sender_match = re.match(r"^(.*?)\s*(?:<(.+@.+)>)?$", sender_header)
+    sender_name = sender_match.group(1).strip() if sender_match else "Unknown Sender"
+    sender_email = (
+        sender_match.group(2)
+        if sender_match and sender_match.group(2)
+        else "unknown@example.com"
     )
 
-    # Print out the parts of the message
-    print("Message parts:")
-    for part in payload.get("parts", []):
-        print(f"- {part['mimeType']}")
+    metadata = {
+        "id": response["id"],
+        "time_received": next(
+            (header["value"] for header in headers if header["name"].lower() == "date"),
+            "Unknown",
+        ),
+        "is_read": "UNREAD" not in response["labelIds"],
+        "sender_name": sender_name,
+        "sender_email": sender_email,
+        "subject": next(
+            (
+                header["value"]
+                for header in headers
+                if header["name"].lower() == "subject"
+            ),
+            "No Subject",
+        ),
+        "original_html": None,
+        "clean_html": None,
+        "clean_markdown": None,
+        "attachments": [],
+    }
 
     plain_content, html_content = None, None
     for part in payload.get("parts", []):
@@ -63,6 +65,16 @@ def process_message(request_id, response, exception):
                 plain, html = process_part(subpart)
                 plain_content = plain_content or plain
                 html_content = html_content or html
+        elif part["mimeType"].startswith("application/") or part["mimeType"].startswith(
+            "image/"
+        ):
+            metadata["attachments"].append(
+                {
+                    "filename": part.get("filename", "unnamed_attachment"),
+                    "mimeType": part["mimeType"],
+                    "data": part["body"].get("attachmentId", ""),
+                }
+            )
         else:
             plain, html = process_part(part)
             plain_content = plain_content or plain
@@ -77,17 +89,59 @@ def process_message(request_id, response, exception):
             elif payload.get("mimeType") == "text/html":
                 html_content = content
 
+    metadata["original_html"] = html_content
     if html_content:
-        cleaned_html = clean_html(html_content)
-        to_markdown_file(
-            cleaned_html, f"msg_{request_id}_{id}_html.md", with_images=False
-        )
-        # save_content(cleaned_html, "html", request_id)
+        metadata["clean_html"] = clean_html(html_content)
+        metadata["clean_markdown"] = html_to_markdown(metadata["clean_html"])
     elif plain_content:
-        save_content(plain_content, "plain", request_id)
+        metadata["clean_markdown"] = plain_content
+
+    return metadata
+
+
+def save_to_file(content, filename):
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(content)
+    filesize = len(content)
+    # TODO: log this!!
+    # print(f"Content saved to {filename} ({filesize} bytes)")
+
+
+def print_side_by_side(*items):
+    formatted_items = []
+    for item in items:
+        if isinstance(item, tuple):
+            key, value = item
+        else:
+            key = item
+            value = ""
+        truncated_value = f"{value[:30]}..." if len(value) > 30 else value
+        formatted_items.append(f"{key}: {truncated_value}")
+    print(" | ".join(formatted_items))
+
+
+def process_message(request_id, response, exception):
+    if exception is not None:
+        print(f"An error occurred: {exception}")
+        return
+
+    if "DRAFT" in response.get("labelIds", []):
+        return
+
+    metadata = extract_email_metadata(response)
+
+    if metadata["clean_markdown"]:
+        sanitized_subject = sanitize_filename(metadata["subject"])[:50]
+        sender_email = sanitize_filename(metadata["sender_email"])[:50]
+        filename = f"email{request_id}_{sender_email}_{sanitized_subject}.md"
+        save_to_file(metadata["clean_markdown"], filename)
     else:
         print("No message body found")
 
-    print(f"Subject: {subject}")
-    print(f"From: {sender}")
-    print("--------------------")
+    print_side_by_side(
+        ("Email", request_id),
+        ("Date", metadata["time_received"][:22]),
+        ("Subject", metadata["subject"]),
+        ("Addr", metadata["sender_email"]),
+        ("From", metadata["sender_name"]),
+    )

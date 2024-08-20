@@ -72,7 +72,6 @@ def to_markdown_file(html_string, output_path, with_images=False):
     markdown = html_to_markdown(html_string, with_images=with_images)
     with open(output_path, "w", encoding="utf-8") as file:
         file.write(markdown)
-    print(f"Markdown file created at {output_path}")
 
 
 def convert_url_to_markdown(url, output_path):
